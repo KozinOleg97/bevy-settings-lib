@@ -104,7 +104,7 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     path::{Path, PathBuf},
-    sync::{mpsc, Mutex},
+    sync::{Mutex, mpsc},
     thread,
 };
 
@@ -716,9 +716,7 @@ mod test_utils {
         }
     }
 
-    pub fn settings_path<S: Setting + ValidatedSetting>(
-        config: &SettingsPluginConfig,
-    ) -> PathBuf {
+    pub fn settings_path<S: Setting + ValidatedSetting>(config: &SettingsPluginConfig) -> PathBuf {
         let plugin = SettingsPlugin::<S>::from_config(config.clone());
         plugin.path()
     }

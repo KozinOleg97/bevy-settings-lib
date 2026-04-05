@@ -1,0 +1,13 @@
+.idea
+.idea/
+.idea/*
+Cargo.toml.orig
+*.orig
+*.bak
+*.backup
+.qodo
+.qodo/
+target/
+*.log
+.gitignore
+.cargoignore

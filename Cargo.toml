@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/KozinOleg97/bevy-settings-lib"
 readme = "README.md"
 keywords = ["bevy", "settings", "configuration", "serialization", "game-dev"]
-categories = ["game-development", "configuration", "filesystem"]
+categories = ["game-development", "config", "filesystem"]
 exclude = [".gitignore", "Cargo.lock"]
 
 [dependencies]

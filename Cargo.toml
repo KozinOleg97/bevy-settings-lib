@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2024"
 description = "A flexible settings management library for Bevy with async saving, multiple formats, and built‑in validation"
 license = "MIT"
-repository = "https://github.com/yourname/bevy-settings-lib"
+repository = "https://github.com/KozinOleg97/bevy-settings-lib"
 readme = "README.md"
 keywords = ["bevy", "settings", "configuration", "serialization", "game-dev"]
 categories = ["game-development", "configuration", "serialization"]
+exclude = [".gitignore", "Cargo.lock"]
 
 [dependencies]
 bevy = { version = "0.18.0", default-features = false, features = ["bevy_log"]}

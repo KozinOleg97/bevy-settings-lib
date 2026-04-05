@@ -9,8 +9,7 @@ A flexible settings management library for Bevy with async saving, multiple form
 
 This library provides a convenient way to save, load, and reload settings in Bevy applications.
 It supports text formats (TOML, JSON) and binary (postcard) with atomic write‑then‑rename
-to prevent file corruption. Designed for both **configuration** (developer‑controlled settings)
-and **preferences** (user‑controlled settings) with a clean, event‑driven API.
+to prevent file corruption, with a clean, event‑driven API.
 
 ## Features
 
@@ -21,7 +20,8 @@ and **preferences** (user‑controlled settings) with a clean, event‑driven AP
 - **Load from OS‑standard directories** (via `directories` crate) **or from the game's local folder**.
 - **Events**: `PersistSetting<S>`, `PersistAllSettings`, `ReloadSetting<S>`, `SettingsSaveError<S>`.
 - **Partial loading** – if a file does not exist, `S::default()` is used.
-- **Validation** – every settings type must implement `ValidatedSetting` to normalize values after loading and before saving.
+- **Validation** – every settings type must implement `ValidatedSetting` to normalize values after loading and before
+  saving.
 - **Thread‑safe** – background threads handle file I/O without blocking the main thread.
 
 ## Installation
@@ -80,8 +80,10 @@ fn save_on_keypress(mut commands: Commands, keyboard: Res<ButtonInput<KeyCode>>)
 
 ### 1. Defining a Settings Type
 
-Your settings type must be a Bevy `Resource` and implement `Serialize`, `Deserialize`, `Clone`, `Debug`, `Default`, and `PartialEq`.
-It also **must** implement the `ValidatedSetting` trait, which is called after loading and before saving to normalize values.
+Your settings type must be a Bevy `Resource` and implement `Serialize`, `Deserialize`, `Clone`, `Debug`, `Default`, and
+`PartialEq`.
+It also **must** implement the `ValidatedSetting` trait, which is called after loading and before saving to normalize
+values.
 
 ```rust
 #[derive(Resource, Default, Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -105,25 +107,25 @@ impl ValidatedSetting for GameConfig {
 
 Use `SettingsPluginConfig` to control where and how settings are stored.
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| `domain` | Top‑level domain for OS‑specific paths (e.g., `"com"`, `"org"`). | `"com"` |
-| `company` | Company/organization name (required for `SystemConfigDir`). | `""` |
-| `project` | Project name (required for `SystemConfigDir`). | `""` |
-| `format` | Serialization format: `FormatKind::Toml`, `Json`, or `Binary`. | `Toml` |
-| `file_name` | Explicit file name (without extension). If `None`, derived from the struct name. | `None` |
-| `storage` | Where to store files: `SettingsStorage::SystemConfigDir` (OS‑standard) or `GameLocalDir` (next to executable). | `SystemConfigDir` |
+| Field       | Description                                                                                                    | Default           |
+|-------------|----------------------------------------------------------------------------------------------------------------|-------------------|
+| `domain`    | Top‑level domain for OS‑specific paths (e.g., `"com"`, `"org"`).                                               | `"com"`           |
+| `company`   | Company/organization name (required for `SystemConfigDir`).                                                    | `""`              |
+| `project`   | Project name (required for `SystemConfigDir`).                                                                 | `""`              |
+| `format`    | Serialization format: `FormatKind::Toml`, `Json`, or `Binary`.                                                 | `Toml`            |
+| `file_name` | Explicit file name (without extension). If `None`, derived from the struct name.                               | `None`            |
+| `storage`   | Where to store files: `SettingsStorage::SystemConfigDir` (OS‑standard) or `GameLocalDir` (next to executable). | `SystemConfigDir` |
 
 Example with custom configuration:
 
 ```rust
 let config = SettingsPluginConfig {
-    format: FormatKind::Json,
-    company: "MyCompany".into(),
-    project: "MyGame".into(),
-    file_name: Some("user_prefs".into()),
-    storage: SettingsStorage::GameLocalDir, // save next to the .exe
-    ..Default::default()
+format: FormatKind::Json,
+company: "MyCompany".into(),
+project: "MyGame".into(),
+file_name: Some("user_prefs".into()),
+storage: SettingsStorage::GameLocalDir, // save next to the .exe
+..Default::default ()
 };
 app.add_plugins(SettingsPlugin::<MySettings>::from_config(config));
 ```
@@ -131,15 +133,16 @@ app.add_plugins(SettingsPlugin::<MySettings>::from_config(config));
 ### 3. Storage Locations
 
 - **`SystemConfigDir`** – uses the OS‑standard configuration directory:
-  - Windows: `%APPDATA%\Company\Project\config\`
-  - macOS: `~/Library/Application Support/company/project/config/`
-  - Linux: `~/.config/company/project/config/`
+    - Windows: `%APPDATA%\Company\Project\config\`
+    - macOS: `~/Library/Application Support/company/project/config/`
+    - Linux: `~/.config/company/project/config/`
 
 - **`GameLocalDir`** – uses the directory containing the executable (ideal for portable installations).
 
 ### 4. Saving Settings
 
-Trigger saving by sending a `PersistSetting<S>` event. The event can optionally carry a new value to replace the current settings before saving.
+Trigger saving by sending a `PersistSetting<S>` event. The event can optionally carry a new value to replace the current
+settings before saving.
 
 ```rust
 // Save current settings
@@ -147,7 +150,7 @@ commands.trigger(PersistSetting::<MySettings> { value: None });
 
 // Save with a new value
 commands.trigger(PersistSetting::<MySettings> {
-    value: Some(MySettings { volume: 0.8, fullscreen: true }),
+value: Some(MySettings { volume: 0.8, fullscreen: true }),
 });
 ```
 
@@ -163,13 +166,14 @@ Reload settings from disk with a `ReloadSetting<S>` event:
 
 ```rust
 commands.trigger(ReloadSetting::<MySettings> {
-    _phantom: std::marker::PhantomData,
+_phantom: std::marker::PhantomData,
 });
 ```
 
 ### 6. Handling Errors
 
-If a background save fails, a `SettingsSaveError<S>` event is emitted. You can observe it to notify the user or log the error.
+If a background save fails, a `SettingsSaveError<S>` event is emitted. You can observe it to notify the user or log the
+error.
 
 ```rust
 fn handle_save_errors(
@@ -187,27 +191,22 @@ You can have as many independent settings types as you need – just add a separ
 
 ```rust
 app.add_plugins(SettingsPlugin::<GameConfig>::from_config(game_config))
-    .add_plugins(SettingsPlugin::<UserPrefs>::from_config(user_prefs));
+.add_plugins(SettingsPlugin::<UserPrefs>::from_config(user_prefs));
 ```
 
 Each will be stored in its own file and can be saved/reloaded independently.
 
 ## Important Notes
 
-- **Asynchronous saving**: When the application exits, the last changes may be lost if the save thread hasn't finished.
-  For guaranteed persistence, implement synchronous saving (e.g., in an `OnExit` system).
-- **Company and project names** must not contain invalid characters for `ProjectDirs` and **cannot be empty when using `SystemConfigDir`** – the library will panic.
+- **Company and project names** must not contain invalid characters for `ProjectDirs` and **cannot be empty when
+  using `SystemConfigDir`** – the library will panic.
   With `GameLocalDir` these fields are optional (may be empty).
 - **No auto‑save** – the developer decides when to trigger saving.
 - **Validation is mandatory** – even if you don't need validation, you must provide an empty `validate` implementation.
 
 ## Examples
 
-Check the `examples/` directory for complete runnable examples:
-
-- `basic.rs` – minimal working example.
-- `multiple_settings.rs` – using two different settings types.
-- `validation.rs` – demonstrating validation and error handling.
+#TODO
 
 Run an example with:
 
@@ -221,7 +220,8 @@ Full API documentation is available on [docs.rs](https://docs.rs/bevy-settings-l
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or pull request on [GitHub](https://github.com/yourname/bevy-settings-lib).
+Contributions are welcome! Please open an issue or pull request
+on [GitHub](https://github.com/yourname/bevy-settings-lib).
 
 See [CHANGELOG.md](CHANGELOG.md) for a history of changes.
 

@@ -30,7 +30,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-bevy-settings-lib = "0.1.0"
+bevy-settings-lib = "0.1"
 ```
 
 ## Quick Start

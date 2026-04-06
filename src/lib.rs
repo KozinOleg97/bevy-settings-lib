@@ -74,7 +74,8 @@
 //!   For guaranteed persistence, implement synchronous saving (e.g., in an `OnExit` system).
 //! - **Company and project names** must not contain invalid characters for `ProjectDirs` and **cannot be empty when using `SystemConfigDir`** – the library will panic.
 //!   With `GameLocalDir` these fields are optional (may be empty).
-//! - **No auto‑save** – the developer decides when to trigger saving.
+//! - **No auto‑save and no auto‑create** – the developer decides when to trigger saving. The settings file is only created on the first explicit save.
+//! - **First launch defaults**: The library does not create a file automatically. Use a system to adjust `S::default()` to runtime conditions (screen resolution, language, etc.) by modifying the resource directly. Save explicitly only when needed.
 //!
 //! # Plugin Configuration
 //!
@@ -104,7 +105,7 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     path::{Path, PathBuf},
-    sync::{Mutex, mpsc},
+    sync::{mpsc, Mutex},
     thread,
 };
 
@@ -195,8 +196,12 @@ impl<T> Setting for T where
 
 /// Trait for validating and normalizing setting values.
 /// **Mandatory to implement** for all types used with `SettingsPlugin`.
-/// Called automatically after loading (including from file), after reloading, after `default()`,
-/// as well as before saving and when setting a new value via the `PersistSetting` event.
+/// Called automatically:
+/// - after loading from a file (or `S::default()` if the file does not exist),
+/// - after `ReloadSetting`,
+/// - **before saving** (`PersistSetting` and `PersistAllSettings`),
+/// - **when a new value is provided** in `PersistSetting { value: Some(...) }`.
+///
 /// If validation is not needed, implement the method as empty.
 pub trait ValidatedSetting {
     fn validate(&mut self);
@@ -301,6 +306,10 @@ pub struct PersistSetting<S: Setting> {
     pub value: Option<S>,
 }
 
+/// Event that triggers a reload of the settings from disk.
+///
+/// If the settings file does not exist or cannot be read, the current in‑memory resource is **not** changed.
+/// To reset to default values, use `PersistSetting` with `Some(S::default())` or implement your own logic.
 #[derive(Event)]
 pub struct ReloadSetting<S: Setting> {
     pub _phantom: PhantomData<S>,
@@ -523,8 +532,10 @@ impl<S: Setting + ValidatedSetting> SettingsPlugin<S> {
         let ev = event.event();
         if let Some(new_value) = &ev.value {
             *settings = new_value.clone();
-            // settings.validate(); // validation optional for the developer.
+            settings.validate();
         }
+
+        settings.validate();
 
         let path = internal.path.clone();
         let temp_path = internal.temp_path.clone();
@@ -548,9 +559,11 @@ impl<S: Setting + ValidatedSetting> SettingsPlugin<S> {
 
     fn persist_all_observer(
         _event: On<PersistAllSettings>,
-        settings: Res<S>,
+        mut settings: ResMut<S>,
         internal: Res<SettingsInternal<S>>,
     ) {
+        settings.validate();
+
         let path = internal.path.clone();
         let temp_path = internal.temp_path.clone();
         let settings_clone = settings.clone();

@@ -1,6 +1,6 @@
 [package]
 name = "bevy-settings-lib"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A flexible settings management library for Bevy with async saving, multiple formats, and built‑in validation"
 license = "MIT"

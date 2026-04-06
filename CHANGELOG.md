@@ -5,9 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-04-07
+
+### Fixed
+
+- **Validation**: `validate()` is now called before saving (`PersistSetting` and `PersistAllSettings`) and when a new
+  value is provided via `PersistSetting { value: Some(...) }`, matching the documentation.
+- **Documentation**: Clarified that `ReloadSetting` does **not** reset settings to default when the file is missing.
+- **Documentation**: Added notes about first launch, dynamic defaults, and lazy file creation.
+
+[0.1.1]: https://github.com/KozinOleg97/bevy-settings-lib/releases/tag/v0.1.1
+
+
 ## [0.1.0] - 2025-04-05
 
 ### Added
+
 - Initial release of `bevy-settings-lib`
 - Support for TOML, JSON, and binary (postcard) formats
 - Asynchronous saving with atomic write‑then‑rename
@@ -19,12 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite and documentation
 
 ### Changed
+
 - (No changes – initial release)
 
 ### Fixed
+
 - (No fixes – initial release)
 
 ### Removed
+
 - (No removals – initial release)
 
 [0.1.0]: https://github.com/yourname/bevy-settings-lib/releases/tag/v0.1.0

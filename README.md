@@ -170,6 +170,9 @@ _phantom: std::marker::PhantomData,
 });
 ```
 
+ > **Note**: If the settings file does not exist when reloading, the current in‑memory settings remain unchanged.  
+ > The library does **not** automatically reset to `S::default()`. To reset, send `PersistSetting` with a new value or implement your own logic.
+
 ### 6. Handling Errors
 
 If a background save fails, a `SettingsSaveError<S>` event is emitted. You can observe it to notify the user or log the
@@ -195,6 +198,24 @@ app.add_plugins(SettingsPlugin::<GameConfig>::from_config(game_config))
 ```
 
 Each will be stored in its own file and can be saved/reloaded independently.
+
+### 8. First Launch: Dynamic Defaults and File Creation
+
+By default, the library **does not create a settings file** on disk until the first call to `PersistSetting` (or
+`PersistAllSettings`).  
+This lazy creation is safe and efficient: your game runs with in‑memory `S::default()` values, and the file appears only
+when the player actually changes and saves something.
+
+However, you may need to adapt default settings to the runtime environment (screen resolution, system language, hardware
+capabilities).  
+Here is the recommended pattern:
+
+1. **Generate dynamic defaults** in a system that runs after the window is created (e.g., in `PostStartup` or an
+   `OnEnter` state).
+2. **Modify the `ResMut<S>` resource** directly – no file is written yet.
+3. **Optionally force file creation** only if you really need a file to exist from the start (e.g., for external tools).
+   In that case, trigger `PersistSetting` after setting your dynamic defaults, but check `path.exists()` first to avoid
+   overwriting an existing configuration.
 
 ## Important Notes
 

@@ -22,7 +22,14 @@ to prevent file corruption, with a clean, event‑driven API.
 - **Partial loading** – if a file does not exist, `S::default()` is used.
 - **Validation** – every settings type must implement `ValidatedSetting` to normalize values after loading and before
   saving.
-- **Thread‑safe** – background threads handle file I/O without blocking the main thread.
+- **Persistent worker thread** – each settings type has a dedicated background thread that processes save requests
+  sequentially, eliminating file race conditions and ensuring reliable serialization.
+
+## Bevy Compatibility
+
+| Bevy Version | Plugin Version |
+|--------------|----------------|
+| `0.18`       | `0.1`          |
 
 ## Installation
 
@@ -170,8 +177,9 @@ _phantom: std::marker::PhantomData,
 });
 ```
 
- > **Note**: If the settings file does not exist when reloading, the current in‑memory settings remain unchanged.  
- > The library does **not** automatically reset to `S::default()`. To reset, send `PersistSetting` with a new value or implement your own logic.
+> **Note**: If the settings file does not exist when reloading, the current in‑memory settings remain unchanged.  
+> The library does **not** automatically reset to `S::default()`. To reset, send `PersistSetting` with a new value or
+> implement your own logic.
 
 ### 6. Handling Errors
 

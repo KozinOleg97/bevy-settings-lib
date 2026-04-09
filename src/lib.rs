@@ -9,6 +9,7 @@
 //! - **Any number of configurations** – each configuration has its own data type and file name.
 //! - **File names can be explicit or derived from the struct name** (automatically converted to snake_case).
 //! - **Asynchronous saving** with atomic write‑then‑rename – files are never left in a corrupted state.
+//! - **Persistent worker thread** – each settings type has a dedicated background thread that processes save requests sequentially, eliminating file race conditions.
 //! - **Format support**: TOML (default), JSON, binary (postcard).
 //! - **Load from OS‑standard directories** (via `directories` crate) **or from the game's local folder**.
 //! - **Events**: `PersistSetting<S>`, `PersistAllSettings`, `ReloadSetting<S>`, `SettingsSaveError<S>`.
@@ -563,10 +564,12 @@ impl<S: Setting + ValidatedSetting> SettingsPlugin<S> {
         let settings_clone = settings.clone();
         if let Err(e) = worker.sender.send(Some(settings_clone)) {
             bevy::log::error!("Failed to queue settings for saving: {}", e);
-            let _ = internal.error_sender.send(SettingsError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Save worker channel closed",
-            )));
+            let _ = internal
+                .error_sender
+                .send(SettingsError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Save worker channel closed",
+                )));
         }
     }
 
@@ -581,10 +584,12 @@ impl<S: Setting + ValidatedSetting> SettingsPlugin<S> {
         let settings_clone = settings.clone();
         if let Err(e) = worker.sender.send(Some(settings_clone)) {
             bevy::log::error!("Failed to queue settings for saving: {}", e);
-            let _ = internal.error_sender.send(SettingsError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Save worker channel closed",
-            )));
+            let _ = internal
+                .error_sender
+                .send(SettingsError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Save worker channel closed",
+                )));
         }
     }
 
@@ -658,7 +663,8 @@ impl<S: Setting + ValidatedSetting> Plugin for SettingsPlugin<S> {
 
         // Create channels: one for errors, one for save queue.
         let (error_sender, error_receiver) = mpsc::channel();
-        let (save_sender, save_receiver): (Sender<Option<S>>, Receiver<Option<S>>) = mpsc::channel();
+        let (save_sender, save_receiver): (Sender<Option<S>>, Receiver<Option<S>>) =
+            mpsc::channel();
 
         // Attempt to create directory, send error through channel if fails
         if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -666,7 +672,8 @@ impl<S: Setting + ValidatedSetting> Plugin for SettingsPlugin<S> {
             let _ = error_sender.send(SettingsError::Io(e));
         }
 
-        let internal = SettingsInternal::<S>::new(self.config.clone(), dir, path, error_sender.clone());
+        let internal =
+            SettingsInternal::<S>::new(self.config.clone(), dir, path, error_sender.clone());
 
         // Clone the data needed for the worker thread BEFORE moving it into the closure
         let temp_path = internal.temp_path.clone();
@@ -691,7 +698,10 @@ impl<S: Setting + ValidatedSetting> Plugin for SettingsPlugin<S> {
                         }
                         None => {
                             // Termination signal received.
-                            bevy::log::debug!("Save worker for {} shutting down.", std::any::type_name::<S>());
+                            bevy::log::debug!(
+                                "Save worker for {} shutting down.",
+                                std::any::type_name::<S>()
+                            );
                             break;
                         }
                     }

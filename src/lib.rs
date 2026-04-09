@@ -1,4 +1,4 @@
-//! A flexible settings management library for Bevy with async saving, multiple formats, and Configuration/Preferences separation.
+//! A flexible settings management library for Bevy with async saving, multiple formats, and built‑in validation.
 //!
 //! This library provides a convenient way to save, load, and reload settings in Bevy applications.
 //! It supports text formats (TOML, JSON) and binary (postcard) with atomic write‑then‑rename
@@ -9,6 +9,7 @@
 //! - **Any number of configurations** – each configuration has its own data type and file name.
 //! - **File names can be explicit or derived from the struct name** (automatically converted to snake_case).
 //! - **Asynchronous saving** with atomic write‑then‑rename – files are never left in a corrupted state.
+//! - **Persistent worker thread** – each settings type has a dedicated background thread that processes save requests sequentially, eliminating file race conditions.
 //! - **Format support**: TOML (default), JSON, binary (postcard).
 //! - **Load from OS‑standard directories** (via `directories` crate) **or from the game's local folder**.
 //! - **Events**: `PersistSetting<S>`, `PersistAllSettings`, `ReloadSetting<S>`, `SettingsSaveError<S>`.
@@ -105,8 +106,8 @@ use std::{
     fmt::Debug,
     marker::PhantomData,
     path::{Path, PathBuf},
-    sync::{mpsc, Mutex},
-    thread,
+    sync::mpsc::{self, Receiver, Sender},
+    thread::{self, JoinHandle},
 };
 
 use bevy::prelude::*;
@@ -332,15 +333,36 @@ struct SettingsInternal<S: Setting> {
     path: PathBuf,
     temp_path: PathBuf,
     directory: PathBuf,
-    error_sender: mpsc::Sender<SettingsError>,
+    error_sender: Sender<SettingsError>,
     _marker: PhantomData<S>,
 }
 
 /// Resource for receiving errors from background threads.
 #[derive(Resource)]
 struct SettingsErrorReceiver<S: Setting> {
-    receiver: Mutex<mpsc::Receiver<SettingsError>>,
+    receiver: mpsc::Receiver<SettingsError>,
     _marker: PhantomData<S>,
+}
+
+/// Resource that owns the background save worker thread and its channel.
+#[derive(Resource)]
+struct SaveWorker<S: Setting> {
+    /// Sender to queue settings to be saved. `None` is sent to signal shutdown.
+    sender: Sender<Option<S>>,
+    /// Handle to the background thread; joined on drop.
+    handle: Option<JoinHandle<()>>,
+    _marker: PhantomData<S>,
+}
+
+impl<S: Setting> Drop for SaveWorker<S> {
+    fn drop(&mut self) {
+        // Send termination signal if channel is still open.
+        let _ = self.sender.send(None);
+        if let Some(handle) = self.handle.take() {
+            // Wait for the thread to finish pending saves.
+            let _ = handle.join();
+        }
+    }
 }
 
 impl<S: Setting> SettingsInternal<S> {
@@ -348,7 +370,7 @@ impl<S: Setting> SettingsInternal<S> {
         config: SettingsPluginConfig,
         dir: PathBuf,
         path: PathBuf,
-        error_sender: mpsc::Sender<SettingsError>,
+        error_sender: Sender<SettingsError>,
     ) -> Self {
         let extension = match config.format {
             FormatKind::Toml => TomlFormat::file_extension(),
@@ -485,7 +507,7 @@ impl<S: Setting + ValidatedSetting> SettingsPlugin<S> {
         path: &Path,
         settings: &S,
         format_kind: FormatKind,
-        error_sender: mpsc::Sender<SettingsError>,
+        error_sender: &Sender<SettingsError>,
     ) {
         let write_result = match format_kind {
             FormatKind::Binary => write_binary(temp_path, settings),
@@ -528,6 +550,7 @@ impl<S: Setting + ValidatedSetting> SettingsPlugin<S> {
         event: On<PersistSetting<S>>,
         mut settings: ResMut<S>,
         internal: Res<SettingsInternal<S>>,
+        worker: Res<SaveWorker<S>>,
     ) {
         let ev = event.event();
         if let Some(new_value) = &ev.value {
@@ -537,51 +560,37 @@ impl<S: Setting + ValidatedSetting> SettingsPlugin<S> {
 
         settings.validate();
 
-        let path = internal.path.clone();
-        let temp_path = internal.temp_path.clone();
+        // Clone settings and send to worker channel.
         let settings_clone = settings.clone();
-        let format_kind = internal.config.format;
-        let error_sender = internal.error_sender.clone();
-
-        thread::Builder::new()
-            .name("bevy-settings-save".into())
-            .spawn(move || {
-                Self::save_to_file(
-                    &temp_path,
-                    &path,
-                    &settings_clone,
-                    format_kind,
-                    error_sender,
-                );
-            })
-            .expect("Failed to spawn save thread");
+        if let Err(e) = worker.sender.send(Some(settings_clone)) {
+            bevy::log::error!("Failed to queue settings for saving: {}", e);
+            let _ = internal
+                .error_sender
+                .send(SettingsError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Save worker channel closed",
+                )));
+        }
     }
 
     fn persist_all_observer(
         _event: On<PersistAllSettings>,
         mut settings: ResMut<S>,
         internal: Res<SettingsInternal<S>>,
+        worker: Res<SaveWorker<S>>,
     ) {
         settings.validate();
 
-        let path = internal.path.clone();
-        let temp_path = internal.temp_path.clone();
         let settings_clone = settings.clone();
-        let format_kind = internal.config.format;
-        let error_sender = internal.error_sender.clone();
-
-        thread::Builder::new()
-            .name("bevy-settings-save".into())
-            .spawn(move || {
-                Self::save_to_file(
-                    &temp_path,
-                    &path,
-                    &settings_clone,
-                    format_kind,
-                    error_sender,
-                );
-            })
-            .expect("Failed to spawn save thread");
+        if let Err(e) = worker.sender.send(Some(settings_clone)) {
+            bevy::log::error!("Failed to queue settings for saving: {}", e);
+            let _ = internal
+                .error_sender
+                .send(SettingsError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Save worker channel closed",
+                )));
+        }
     }
 
     fn reload_observer(
@@ -620,12 +629,10 @@ impl<S: Setting + ValidatedSetting> SettingsPlugin<S> {
 
     /// System that processes errors from background threads and sends them as events.
     fn process_error_messages(
-        error_receiver: ResMut<SettingsErrorReceiver<S>>,
+        error_receiver: NonSend<Receiver<SettingsError>>,
         mut commands: Commands,
     ) {
-        // Try to receive all pending errors without blocking
-        let receiver = error_receiver.receiver.lock().unwrap();
-        while let Ok(error) = receiver.try_recv() {
+        while let Ok(error) = error_receiver.try_recv() {
             commands.trigger(SettingsSaveError::<S> {
                 error,
                 _phantom: PhantomData::<S>,
@@ -654,8 +661,10 @@ impl<S: Setting + ValidatedSetting> Plugin for SettingsPlugin<S> {
         let dir = self.directory();
         let path = self.path();
 
-        // Create channel for error reporting from background threads
+        // Create channels: one for errors, one for save queue.
         let (error_sender, error_receiver) = mpsc::channel();
+        let (save_sender, save_receiver): (Sender<Option<S>>, Receiver<Option<S>>) =
+            mpsc::channel();
 
         // Attempt to create directory, send error through channel if fails
         if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -663,15 +672,53 @@ impl<S: Setting + ValidatedSetting> Plugin for SettingsPlugin<S> {
             let _ = error_sender.send(SettingsError::Io(e));
         }
 
-        let internal = SettingsInternal::<S>::new(self.config.clone(), dir, path, error_sender);
-        let error_receiver_resource = SettingsErrorReceiver::<S> {
-            receiver: Mutex::new(error_receiver),
+        let internal =
+            SettingsInternal::<S>::new(self.config.clone(), dir, path, error_sender.clone());
+
+        // Clone the data needed for the worker thread BEFORE moving it into the closure
+        let temp_path = internal.temp_path.clone();
+        let path_clone = internal.path.clone();
+        let config = self.config.clone();
+
+        let handle = thread::Builder::new()
+            .name(format!("bevy-settings-save-{}", std::any::type_name::<S>()))
+            .spawn(move || {
+                // Worker loop: receive Option<S> from channel.
+                for maybe_settings in save_receiver {
+                    match maybe_settings {
+                        Some(settings) => {
+                            let error_sender = error_sender.clone();
+                            SettingsPlugin::<S>::save_to_file(
+                                &temp_path,
+                                &path_clone,
+                                &settings,
+                                config.format,
+                                &error_sender,
+                            );
+                        }
+                        None => {
+                            // Termination signal received.
+                            bevy::log::debug!(
+                                "Save worker for {} shutting down.",
+                                std::any::type_name::<S>()
+                            );
+                            break;
+                        }
+                    }
+                }
+            })
+            .expect("Failed to spawn save worker thread");
+
+        let worker = SaveWorker {
+            sender: save_sender,
+            handle: Some(handle),
             _marker: PhantomData,
         };
 
         app.insert_resource(initial_value)
             .insert_resource(internal)
-            .insert_resource(error_receiver_resource)
+            .insert_non_send_resource(error_receiver)
+            .insert_resource(worker)
             .add_observer(Self::persist_setting_observer)
             .add_observer(Self::persist_all_observer)
             .add_observer(Self::reload_observer)

@@ -1,6 +1,6 @@
 [package]
 name = "bevy-settings-lib"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "A flexible settings management library for Bevy with async saving, multiple formats, and built‑in validation"
 license = "MIT"
@@ -11,13 +11,13 @@ categories = ["game-development", "config", "filesystem"]
 exclude = [".gitignore", "Cargo.lock"]
 
 [dependencies]
-bevy = { version = "0.18.0", default-features = false, features = ["bevy_log"]}
+bevy = { version = "0.18", default-features = false, features = ["bevy_log"] }
 directories = "6.0.0"
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.18"
 toml = "1.1"
-serde_json = "1.0.149"
-postcard = { version = "1.1.3", features = ["alloc"] }
+serde_json = "1.0"
+postcard = { version = "1.1", features = ["alloc"] }
 
 [dev-dependencies]
 serial_test = "3.4.0"
